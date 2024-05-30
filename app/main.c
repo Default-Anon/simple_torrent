@@ -15,14 +15,15 @@ main (int argc, char *argv[])
       return 1;
     }
 
-  setbuf (stderr, NULL);
-  setbuf (stdout, NULL);
-
   const char *command = argv[1];
 
   if (strcmp (command, "decode") == 0)
     {
+      // You can use print statements as follows for debugging, they'll be
+      // visible when running tests. printf("Logs from your program will appear
+      // here!\n");
 
+      // Uncomment this block to pass the first stage
       const char *encoded_str = argv[2];
 
       bencode *decoded = decode_bencode (encoded_str);
@@ -30,12 +31,6 @@ main (int argc, char *argv[])
       bencode_json (decoded);
 
       printf ("\n");
-
-      encoded_str = encode_dict_bencode (decoded);
-
-      printf ("encoded_str is %s\n", encoded_str);
-
-      free ((void *)encoded_str);
 
       bencode_free (decoded);
 
@@ -51,20 +46,31 @@ main (int argc, char *argv[])
        *
        * writing Length key and hist value
        */
-
-      printf ("[your_program] starting\n");
       const char *file_name = argv[2];
 
       char *buf = write_file_content_to_buffer (file_name);
-      printf ("[your_program] buf is writed\n");
-      bencode *decoded = decode_bencode (buf);
-      printf ("[your_program] decoded successfully and %p\n", decoded);
 
-      printf ("[your program] decoded type is %d and %d size\n", decoded->type,
-              decoded->raw_size);
-      // bencode_json (decoded);
+      bencode *decoded = decode_bencode (buf);
+      if (decoded == NULL)
+        {
+          free (buf);
+          return 0;
+        }
       bencode_print_dict_from_key (decoded, 1, "announce");
       bencode_print_dict_from_key (decoded, 2, "info", "length");
+
+      /* openssl sha hash *\          */
+      bencode_dictionary *bdict = bencode_get_dict_from_key (decoded, "info");
+      unsigned char *encoded_dict = encode_dict_bencode ((bencode *)bdict);
+      bencode_dictionary *cpy
+          = (bencode_dictionary *)decode_bencode ((char *)encoded_dict);
+      compare_bencode_dicts (bdict, cpy);
+      free (cpy);
+      unsigned char *hash = get_info_hash (encoded_dict, bdict->raw_size);
+      print_info_hash (hash);
+      free (hash);
+
+      free (encoded_dict);
       bencode_free (decoded);
 
       free (decoded);

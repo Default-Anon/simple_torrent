@@ -62,5 +62,6 @@ write_file_content_to_buffer (const char *file_name)
       symbol = read (file_fd, buf + buffer_size - DEFAULT_BUFFER_READ_VALUE,
                      DEFAULT_BUFFER_READ_VALUE);
     }
+  close (file_fd);
   return buf;
 }

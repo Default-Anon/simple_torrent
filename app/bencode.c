@@ -2,6 +2,7 @@
 #include "utils.h"
 #include <assert.h>
 #include <limits.h>
+#include <openssl/sha.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -25,7 +26,7 @@ get_bencode_type (const char *bencoded_value)
 
 /** stdarg in future but now not required **/
 bencode_dictionary *
-get_dictionary_from_key (bencode *decode, const char *key)
+bencode_get_dict_from_key (bencode *decode, const char *key)
 {
   switch (decode->type)
     {
@@ -53,8 +54,7 @@ get_dictionary_from_key (bencode *decode, const char *key)
             if (lst->values[length]->type == BENCODE_DICTIONARY)
               {
                 bencode_dictionary *bdict
-                    = (bencode_dictionary *)get_dictionary_from_key (
-                        lst->values[length], key);
+                    = bencode_get_dict_from_key (lst->values[length], key);
                 if (bdict != NULL)
                   return bdict;
               }
@@ -65,11 +65,12 @@ get_dictionary_from_key (bencode *decode, const char *key)
     }
   return NULL;
 }
-char *
+unsigned char *
 encode_dict_bencode (bencode *bencoded_dict)
 {
   bencode_dictionary *bdict = (bencode_dictionary *)bencoded_dict;
-  char *buf = (char *)malloc (sizeof (char) * bdict->raw_size);
+  unsigned char *buf
+      = (unsigned char *)malloc (sizeof (unsigned char) * bdict->raw_size);
   memset (buf, '\0', bdict->raw_size);
   int str_index = 0, temp = 0;
   buf[str_index] = 'd';
@@ -77,25 +78,31 @@ encode_dict_bencode (bencode *bencoded_dict)
   while (temp < bdict->length)
     {
       bencode_string *key = bdict->keys[temp];
-      snprintf (buf + str_index, key->raw_size + 1, "%zu:%s",
-                strlen (key->value), key->value);
-      str_index += key->raw_size;
-
+      snprintf (buf + str_index, key->raw_size - key->parse_str_size + 1,
+                "%d:", key->parse_str_size);
+      str_index += key->raw_size - key->parse_str_size;
+      memcpy (buf + str_index, key->value, key->parse_str_size);
+      str_index += key->parse_str_size;
       bencode *value = bdict->values[temp];
       switch (bdict->values[temp]->type)
         {
         case BENCODE_STRING:
           {
             bencode_string *val = (bencode_string *)bdict->values[temp];
-            snprintf (buf + str_index, val->raw_size + 1, "%zu:%s",
-                      strlen (val->value), val->value);
-            str_index += val->raw_size;
+            printf ("val_size is %d\n val is %s\n", val->parse_str_size,
+                    val->value);
+            snprintf (buf + str_index, val->raw_size - val->parse_str_size + 1,
+                      "%d:", val->parse_str_size);
+            str_index += val->raw_size - val->parse_str_size;
+            memcpy (buf + str_index, val->value, val->parse_str_size);
+            str_index += val->parse_str_size;
             break;
           }
         case BENCODE_INTEGER:
           {
             bencode_integer *val = (bencode_integer *)bdict->values[temp];
             snprintf (buf + str_index, val->raw_size + 1, "i%lde", val->value);
+
             str_index += val->raw_size;
             break;
           }
@@ -104,6 +111,7 @@ encode_dict_bencode (bencode *bencoded_dict)
             char *list_element = encode_list_bencode (bdict->values[temp]);
             memcpy (buf + str_index, list_element,
                     bdict->values[temp]->raw_size);
+
             str_index += bdict->values[temp]->raw_size;
             free (list_element);
             break;
@@ -126,6 +134,7 @@ encode_dict_bencode (bencode *bencoded_dict)
       temp++;
     }
   buf[str_index] = 'e';
+  printf ("\n\n%s\n\n", buf);
   return buf;
 }
 char *
@@ -187,7 +196,6 @@ bencode *
 decode_dict_bencode (const char *bencoded_value)
 {
   /* d3:fooi53e5:hello:i34343e*/
-  printf ("[your program] decode_dict is started\n");
   const char *curr = ++bencoded_value;
   bencode_dictionary *bdict = (bencode_dictionary *)malloc (sizeof (*bdict));
   bdict->type = BENCODE_DICTIONARY;
@@ -202,17 +210,15 @@ decode_dict_bencode (const char *bencoded_value)
         return (bencode *)bdict;
 
       bencode_string *b_key = (bencode_string *)decode_bencode (curr);
-      printf ("[your_program] dict_key value is %s\n", b_key->value);
-      /* in the end error after that log and it's not assert, maybe its a
-       * realloc func, but how */
-      bdict->keys = realloc (bdict->keys, bdict->length + 1);
+      bdict->keys
+          = realloc (bdict->keys, (bdict->length + 1) * sizeof (*b_key));
       assert (bdict->keys != NULL);
       bdict->keys[bdict->length] = b_key;
       curr += b_key->raw_size;
 
       bencode *b_value = decode_bencode (curr);
-      printf ("[your program] dict value type is %d\n", b_value->type);
-      bdict->values = realloc (bdict->values, bdict->length);
+      bdict->values
+          = realloc (bdict->values, (bdict->length + 1) * sizeof (*b_value));
       assert (bdict->values != NULL);
       bdict->values[bdict->length] = b_value;
       curr += b_value->raw_size;
@@ -227,7 +233,6 @@ decode_dict_bencode (const char *bencoded_value)
 bencode *
 decode_list_bencode (const char *bencoded_value)
 {
-  printf ("[your program] decode_list is started\n");
   char *curr;
   bencode_list *blist = (bencode_list *)malloc (sizeof (bencode_list));
   blist->type = BENCODE_LIST;
@@ -256,7 +261,6 @@ decode_list_bencode (const char *bencoded_value)
 bencode *
 decode_integer_bencode (const char *bencoded_value)
 {
-  printf ("[your program] decode_integer is started\n");
   bencode_integer *bint = (bencode_integer *)malloc (sizeof (bencode_integer));
   bint->type = BENCODE_INTEGER;
   char *end = strchr (bencoded_value, 'e');
@@ -311,7 +315,6 @@ decode_integer_bencode (const char *bencoded_value)
 bencode *
 decode_string_bencode (const char *bencoded_value)
 {
-  printf ("[your program] decode_string is started\n");
   bencode_string *str = (bencode_string *)malloc (sizeof (bencode_string));
   str->type = BENCODE_STRING;
 
@@ -319,16 +322,15 @@ decode_string_bencode (const char *bencoded_value)
   if (colon_index != NULL)
     {
       *colon_index = '\0';
-      int str_size = atoi (bencoded_value);
+      str->parse_str_size = atoi (bencoded_value);
       *colon_index = ':';
       int length_before_colon = colon_index - bencoded_value;
       const char *start = colon_index + 1;
-      char *decoded_str = (char *)malloc (str_size + 1);
-      strncpy (decoded_str, start, str_size);
-      decoded_str[str_size] = '\0';
-      str->value = decoded_str;
-      str->raw_size = length_before_colon + 1 + str_size;
-      printf ("[your program] str is %s\n", str->value);
+      char *decoded_str = (char *)malloc (str->parse_str_size + 1);
+      strncpy (decoded_str, start, str->parse_str_size);
+      decoded_str[str->parse_str_size] = '\0';
+      str->value = (unsigned char *)decoded_str;
+      str->raw_size = length_before_colon + 1 + str->parse_str_size;
       return (bencode *)str;
     }
   else
@@ -399,7 +401,6 @@ bencode *
 decode_bencode (const char *bencoded_value)
 {
   enum bencode_type type = get_bencode_type (bencoded_value);
-  printf ("[your program] type is returned its a %d\n", type);
   switch (type)
     {
     case BENCODE_STRING:
@@ -418,6 +419,39 @@ decode_bencode (const char *bencoded_value)
   return NULL;
 }
 
+bencode *
+bencode_get_dict_from_nested_keys (bencode *b, int key_sum, const char *key,
+                                   ...)
+{
+  va_list args;
+  bencode_dictionary *bdict = (bencode_dictionary *)b;
+  int counter = 0;
+  const char *next_arg;
+  va_start (args, key);
+
+  while (counter < bdict->length)
+    {
+      if (strcmp (bdict->keys[counter]->value, key) == 0)
+        {
+          const char *next_arg = va_arg (args, const char *);
+          if (key_sum > 1)
+            {
+              bencode *returned = bencode_get_dict_from_nested_keys (
+                  bdict->values[counter], --key_sum, next_arg, args);
+              va_end (args);
+              return returned;
+              break;
+            }
+          else
+            {
+              va_end (args);
+              return bdict->values[counter];
+            }
+        }
+      counter++;
+    }
+  return NULL;
+}
 void
 bencode_print_dict_from_key (bencode *b, int key_sum, const char *key, ...)
 {
@@ -438,7 +472,18 @@ bencode_print_dict_from_key (bencode *b, int key_sum, const char *key, ...)
                                            next_arg, args);
               break;
             }
-          printf ("%s: ", bdict->keys[counter]->value);
+          if (!strcmp (bdict->keys[counter]->value, "announce"))
+            {
+              printf ("Tracker URL: ");
+            }
+          else if (!strcmp (bdict->keys[counter]->value, "length"))
+            {
+              printf ("Length: ");
+            }
+          else
+            {
+              printf ("%s: ", bdict->keys[counter]->value);
+            }
           switch (bdict->values[counter]->type)
             {
             case BENCODE_STRING:
@@ -522,4 +567,35 @@ bencode_free (bencode *b)
     case BENCODE_INVALID:
       break;
     }
+}
+
+unsigned char *
+get_info_hash (unsigned char *encoded, int sz)
+{
+  unsigned char *hash = (unsigned char *)malloc (21);
+  SHA1 (encoded, sz, hash);
+  return hash;
+}
+
+void
+print_info_hash (unsigned char *hash)
+{
+  int index;
+  printf ("Info Hash: ");
+  for (index = 0; index < SHA_DIGEST_LENGTH; index++)
+    printf ("%02x", hash[index]);
+  printf ("\n");
+}
+
+void
+compare_bencode_dicts (bencode_dictionary *first, bencode_dictionary *sec)
+{
+  printf ("[TYPE] %d : %d\n", first->type, sec->type);
+  printf ("[RAW_SIZE] %d : %d\n", first->raw_size, sec->raw_size);
+  printf ("[LENGTH] %d : %d\n", first->length, sec->length);
+  int length;
+  bencode_json ((bencode *)first);
+  printf ("\n\nfirst ended\n\n");
+  bencode_json ((bencode *)sec);
+  printf ("\n\nsecond ended\n\n");
 }
