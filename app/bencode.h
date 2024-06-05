@@ -1,10 +1,10 @@
 #ifndef __BENCODE_H_
 #define __BENCODE_H_
 
+#include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <stdarg.h>
 #include <stddef.h>
-
 enum bencode_type
 {
   BENCODE_INVALID,
@@ -24,7 +24,7 @@ typedef struct
 {
   enum bencode_type type;
   int raw_size;
-  int parse_str_size;
+  char *parse_str_size;
   unsigned char *value;
 } bencode_string;
 
