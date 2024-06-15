@@ -24,7 +24,7 @@ typedef struct
 {
   enum bencode_type type;
   int raw_size;
-  char *parse_str_size;
+  unsigned char *parse_str_size;
   unsigned char *value;
 } bencode_string;
 
@@ -53,17 +53,17 @@ typedef struct
 } bencode_dictionary;
 
 bencode *bencode_invalid ();
-bencode *decode_string_bencode (const char *bencoded_value);
-bencode *decode_integer_bencode (const char *bencoded_value);
-bencode *decode_list_bencode (const char *bencoded_value);
-bencode *decode_dict_bencode (const char *bencoded_value);
+bencode *decode_string_bencode (const unsigned char *bencoded_value);
+bencode *decode_integer_bencode (const unsigned char *bencoded_value);
+bencode *decode_list_bencode (const unsigned char *bencoded_value);
+bencode *decode_dict_bencode (const unsigned char *bencoded_value);
 
 unsigned char *encode_dict_bencode (bencode *bencoded_dict);
 char *encode_list_bencode (bencode *bencode_list);
 
 bencode *bencode_invalid ();
 
-bencode *decode_bencode (const char *bencoded_value);
+bencode *decode_bencode (const unsigned char *bencoded_value);
 void bencode_free (bencode *b);
 
 size_t bencode_to_string (bencode *b, char *buffer, size_t size);
@@ -78,8 +78,8 @@ void bencode_json (bencode *b);
  * dictionary key "length" have another dictionary also how "info" use it
  * likewise docs above just add n keys and make key_sum n
  */
-void bencode_print_dict_from_key (bencode *b, int key_sum, const char *key,
-                                  ...);
+int bencode_print_dict_from_key (bencode *b, int key_sum, const char *key,
+                                 ...);
 
 bencode *bencode_get_dict_from_nested_keys (bencode *b, int key_sum,
                                             const char *key, ...);

@@ -35,33 +35,30 @@ is_str_number_overflow (const char *str)
   return false;
 }
 
-char *
-write_file_content_to_buffer (const char *file_name)
+unsigned char *
+write_file_content_to_buffer (const unsigned char *file_name)
 {
-#define DEFAULT_BUFFER_READ_VALUE 1024
-  int buffer_size = DEFAULT_BUFFER_READ_VALUE, symbol = 0, counter = 0;
-  int file_fd = open (file_name, O_RDONLY);
-  char *buf;
-  if (file_fd == -1)
+  FILE *file_fd = fopen (file_name, "r");
+  fseek (file_fd, 0, SEEK_END);
+  long file_sz = ftell (file_fd);
+  fseek (file_fd, 0, SEEK_SET);
+  unsigned char *buf;
+  if (file_fd == NULL)
     {
       perror ("fopen error:");
       exit (0);
     }
 
-  buf = (char *)malloc (sizeof (char) * buffer_size);
-  symbol = read (file_fd, buf, DEFAULT_BUFFER_READ_VALUE);
-  while (symbol)
+  buf = (unsigned char *)malloc (sizeof (unsigned char) * file_sz);
+  memset (buf, 0, file_sz);
+  size_t bytes_read = fread (buf, sizeof (unsigned char), file_sz, file_fd);
+  if (bytes_read != file_sz)
     {
-      if (symbol == -1)
-        {
-          perror ("read error:");
-          exit (0);
-        }
-      buffer_size += buffer_size;
-      buf = realloc (buf, buffer_size);
-      symbol = read (file_fd, buf + buffer_size - DEFAULT_BUFFER_READ_VALUE,
-                     DEFAULT_BUFFER_READ_VALUE);
+      fprintf (stderr, "Failed to read file.\n");
+      fclose (file_fd);
+      return NULL;
     }
-  close (file_fd);
+
+  fclose (file_fd);
   return buf;
 }

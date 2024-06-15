@@ -10,7 +10,7 @@
 #include <string.h>
 
 enum bencode_type
-get_bencode_type (const char *bencoded_value)
+get_bencode_type (const unsigned char *bencoded_value)
 {
   if (*bencoded_value == 'i')
     return BENCODE_INTEGER;
@@ -70,14 +70,15 @@ unsigned char *
 encode_dict_bencode (bencode *bencoded_dict)
 {
   bencode_dictionary *bdict = (bencode_dictionary *)bencoded_dict;
-  char *buf = (char *)malloc (bdict->raw_size);
+  unsigned char *buf = (unsigned char *)malloc (bdict->raw_size);
   int str_index = 0;
   buf[str_index++] = 'd';
 
   for (int temp = 0; temp < bdict->length; temp++)
     {
       bencode_string *key = bdict->keys[temp];
-      strncpy (buf + str_index, key->parse_str_size, 10);
+      strncpy (buf + str_index, key->parse_str_size,
+               strlen (key->parse_str_size));
       str_index += strlen (key->parse_str_size);
       buf[str_index++] = ':';
       memcpy (buf + str_index, key->value, key->raw_size);
@@ -89,7 +90,8 @@ encode_dict_bencode (bencode *bencoded_dict)
         case BENCODE_STRING:
           {
             bencode_string *val = (bencode_string *)value;
-            strncpy (buf + str_index, val->parse_str_size, 10);
+            strncpy (buf + str_index, val->parse_str_size,
+                     strlen (val->parse_str_size));
             str_index += strlen (val->parse_str_size);
             buf[str_index++] = ':';
             memcpy (buf + str_index, val->value, val->raw_size);
@@ -181,15 +183,15 @@ encode_list_bencode (bencode *lst)
           }
         }
     }
-  arr[blst->raw_size - 1] = 'e';
+  arr[str_index] = 'e';
   return arr;
 }
 
 bencode *
-decode_dict_bencode (const char *bencoded_value)
+decode_dict_bencode (const unsigned char *bencoded_value)
 {
   /* d3:fooi53e5:hello:i34343e*/
-  const char *curr = ++bencoded_value;
+  const unsigned char *curr = ++bencoded_value;
   bencode_dictionary *bdict = (bencode_dictionary *)malloc (sizeof (*bdict));
   bdict->type = BENCODE_DICTIONARY;
   bdict->raw_size = 2;
@@ -203,15 +205,15 @@ decode_dict_bencode (const char *bencoded_value)
         return (bencode *)bdict;
 
       bencode_string *b_key = (bencode_string *)decode_bencode (curr);
-      bdict->keys
-          = realloc (bdict->keys, (bdict->length + 1) * sizeof (*b_key));
+      bdict->keys = realloc (bdict->keys,
+                             (bdict->length + 1) * sizeof (*(bdict->keys)));
       assert (bdict->keys != NULL);
       bdict->keys[bdict->length] = b_key;
       curr += b_key->raw_size;
 
       bencode *b_value = decode_bencode (curr);
-      bdict->values
-          = realloc (bdict->values, (bdict->length + 1) * sizeof (*b_value));
+      bdict->values = realloc (bdict->values,
+                               (bdict->length + 1) * sizeof (*bdict->values));
       assert (bdict->values != NULL);
       bdict->values[bdict->length] = b_value;
       curr += b_value->raw_size;
@@ -224,9 +226,9 @@ decode_dict_bencode (const char *bencoded_value)
 }
 
 bencode *
-decode_list_bencode (const char *bencoded_value)
+decode_list_bencode (const unsigned char *bencoded_value)
 {
-  char *curr;
+  unsigned char *curr;
   bencode_list *blist = (bencode_list *)malloc (sizeof (bencode_list));
   blist->type = BENCODE_LIST;
   blist->raw_size = 2;
@@ -252,12 +254,12 @@ decode_list_bencode (const char *bencoded_value)
   return (bencode *)blist;
 }
 bencode *
-decode_integer_bencode (const char *bencoded_value)
+decode_integer_bencode (const unsigned char *bencoded_value)
 {
   bencode_integer *bint = (bencode_integer *)malloc (sizeof (bencode_integer));
   bint->type = BENCODE_INTEGER;
-  char *end = strchr (bencoded_value, 'e');
-  char *is_negative = strchr (bencoded_value, '-');
+  unsigned char *end = strchr (bencoded_value, 'e');
+  unsigned char *is_negative = strchr (bencoded_value, '-');
   if (!end)
     {
       printf ("If you want to decode integer you need to write \'e\' in "
@@ -306,27 +308,31 @@ decode_integer_bencode (const char *bencoded_value)
   return (bencode *)bint;
 }
 bencode *
-decode_string_bencode (const char *bencoded_value)
+decode_string_bencode (const unsigned char *bencoded_value)
 {
   bencode_string *str = (bencode_string *)malloc (sizeof (bencode_string));
   str->type = BENCODE_STRING;
 
-  char *colon_index = strchr (bencoded_value, ':');
+  unsigned char *colon_index = strchr (bencoded_value, ':');
   if (colon_index != NULL)
     {
       *colon_index = '\0';
       int parse_str_size = atoi (bencoded_value);
-      str->parse_str_size = (char *)malloc (sizeof (char) * 10);
-      memset (str->parse_str_size, 0, 10);
-      strncpy (str->parse_str_size, bencoded_value, 10);
+      size_t string_bencoded_size = strlen (bencoded_value);
+      str->parse_str_size
+          = (char *)malloc (sizeof (char) * string_bencoded_size + 1);
+      memset (str->parse_str_size, 0, string_bencoded_size + 1);
+      strncpy (str->parse_str_size, bencoded_value, string_bencoded_size);
       *colon_index = ':';
-      int length_before_colon = colon_index - bencoded_value;
-      const char *start = colon_index + 1;
-      char *decoded_str = (char *)malloc (parse_str_size + 1);
-      strncpy (decoded_str, start, parse_str_size);
+      int length_with_colon = colon_index - bencoded_value;
+      const unsigned char *start = colon_index + 1;
+      unsigned char *decoded_str
+          = (unsigned char *)malloc (sizeof (*decoded_str) * parse_str_size);
+      //     strncpy (decoded_str, start, parse_str_size);
+      memcpy (decoded_str, start, parse_str_size);
       decoded_str[parse_str_size] = '\0';
       str->value = (unsigned char *)decoded_str;
-      str->raw_size = length_before_colon + 1 + parse_str_size;
+      str->raw_size = length_with_colon + parse_str_size + 1;
       return (bencode *)str;
     }
   else
@@ -344,7 +350,7 @@ bencode_json (bencode *b)
     {
     case BENCODE_STRING:
       {
-        printf ("\"%s\"", ((bencode_string *)b)->value);
+        printf ("\"%s\"\n", ((bencode_string *)b)->value);
         break;
       }
     case BENCODE_INTEGER:
@@ -394,7 +400,7 @@ bencode_json (bencode *b)
     }
 }
 bencode *
-decode_bencode (const char *bencoded_value)
+decode_bencode (const unsigned char *bencoded_value)
 {
   enum bencode_type type = get_bencode_type (bencoded_value);
   switch (type)
@@ -448,7 +454,7 @@ bencode_get_dict_from_nested_keys (bencode *b, int key_sum, const char *key,
     }
   return NULL;
 }
-void
+int
 bencode_print_dict_from_key (bencode *b, int key_sum, const char *key, ...)
 {
   va_list args;
@@ -514,6 +520,7 @@ bencode_print_dict_from_key (bencode *b, int key_sum, const char *key, ...)
       counter++;
     }
   va_end (args);
+  return 0;
 }
 void
 bencode_free (bencode *b)
@@ -566,14 +573,14 @@ bencode_free (bencode *b)
     }
 }
 
-/*unsigned char *
+unsigned char *
 get_info_hash (unsigned char *encoded, int sz)
 {
   unsigned char *hash = (unsigned char *)malloc (21);
   SHA1 (encoded, sz, hash);
   return hash;
-}*/
-
+}
+/*
 unsigned char *
 get_info_hash (unsigned char *encoded, int sz)
 {
@@ -588,7 +595,7 @@ get_info_hash (unsigned char *encoded, int sz)
 
   return hash;
 }
-
+*/
 /*unsigned char *
 get_info_hash (unsigned char *encoded, int sz)
 {
